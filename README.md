@@ -1,79 +1,147 @@
 # Balloo Recycling Booker
 
-Headless browser automation for booking recycling appointments on an ASPX web form.
+A PWA for quickly booking recycling centre appointments. Automates most form fields so you only need to select waste types and pick a time slot.
 
-## Stack
+## Features
 
-- **TypeScript**
-- **Puppeteer** – headless Chrome automation
-- **dotenv** – environment variables from `.env` for local development
+- **PWA**: Install on your phone for quick access
+- **Automation**: Pre-fills form with saved settings
+- **Waste Selection**: Pick what you're bringing each visit
+- **Time Booking**: See available slots and book instantly
+- **Settings**: Configure your details once, use forever
 
-## Setup
+## Project Structure
+
+```
+├── client/           # PWA frontend (Vite + TypeScript)
+│   ├── src/
+│   │   ├── app.ts           # Main app + routing
+│   │   ├── pages/           # Booking and Settings pages
+│   │   └── api.ts           # API client
+│   └── public/              # Static assets
+├── server/           # Backend (Express + Puppeteer)
+│   └── src/
+│       ├── config/          # Environment, settings, selectors
+│       ├── puppeteer/       # Browser driver and step automation
+│       └── routes/          # API endpoints
+├── scripts/          # Development utilities
+│   ├── discover.ts          # Form inspection tool
+│   └── test-steps.ts        # Step-by-step testing
+└── data/             # Runtime data (settings, screenshots)
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 22+
+- Chrome/Chromium (Puppeteer will install it)
+
+### Setup
 
 ```bash
-npm install
-npx puppeteer browsers install chrome
+# Install all dependencies
+npm run install:all
+
+# Copy and configure environment
 cp .env.example .env
+# Edit .env with your details
+
+# Start development (client + server)
+npm run dev
 ```
 
-Edit `.env` with your values:
+Open http://localhost:5173 in your browser.
 
-| Variable     | Description                              |
-| ------------ | ---------------------------------------- |
-| `BOOKING_URL` | Base URL for the recycling booking site |
-| `FORM_PARAMS` | JSON object of form field names → values |
-| `HEADLESS`    | `true` (default) or `false` to show browser |
+### Scripts
 
-### Example `.env`
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start both client and server in dev mode |
+| `npm run dev:server` | Start only the backend server |
+| `npm run dev:client` | Start only the frontend |
+| `npm run build` | Build both for production |
+| `npm start` | Run production server |
+| `npm run discover` | Run form discovery script |
+| `npm run test:step` | Test individual form steps |
+
+## Configuration
+
+Settings can be configured two ways:
+
+1. **Environment variables** (`.env` file) - defaults
+2. **Settings page** in the PWA - overrides
+
+The PWA settings page lets you update:
+- Email and contact info
+- Vehicle registration
+- Default waste types
+- Preferred site
+
+## How It Works
 
 ```
-BOOKING_URL=https://recycling.example.com/booking.aspx
-FORM_PARAMS={"txtPostcode":"SW1A 1AA","ddlArea":"Central"}
-HEADLESS=true
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   PWA UI     │────▶│   Express    │────▶│  Puppeteer   │
+│  (Vite)      │     │   Server     │     │  (Chrome)    │
+└──────────────┘     └──────────────┘     └──────────────┘
+                            │                    │
+                            ▼                    ▼
+                     ┌──────────────┐     ┌──────────────┐
+                     │  Settings    │     │  Council     │
+                     │  (JSON)      │     │  Website     │
+                     └──────────────┘     └──────────────┘
 ```
 
-## Scripts
-
-| Command      | Description                    |
-| ------------ | ------------------------------ |
-| `npm run dev` | Run with tsx (no build step)   |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm start`  | Run compiled output            |
-| `npm run lint` | Run ESLint                    |
-| `npm run format` | Format with Prettier         |
-
-## Project structure
-
-```
-src/
-  config/env.ts   # Environment config (loads .env, validates vars)
-  main.ts         # Entry point, Puppeteer setup
-```
-
-Form interaction logic will be added in `main.ts` once the ASPX form structure is known.
+1. **Start Booking**: Server launches browser, navigates to form
+2. **Fill Details**: Puppeteer fills Step 1 (your details) from settings
+3. **Select Waste**: PWA shows checkboxes, you pick what you're bringing
+4. **Continue**: Server fills Steps 2-4 (vehicle, terms)
+5. **Pick Time**: PWA shows available dates/times
+6. **Confirm**: Server completes booking
 
 ## Docker
 
-Build the image (includes Chrome and all dependencies):
-
 ```bash
-docker build -t balloo-recycling-booker .
+# Build image
+docker build -t recycling-booker .
+
+# Run with your config
+docker run -p 3000:3000 --env-file .env recycling-booker
 ```
 
-Run the container with your env variables:
+## Development
+
+### Discovery Script
+
+Inspect the form structure and find selectors:
 
 ```bash
-docker run --rm \
-  -e BOOKING_URL="https://recycling.example.com/booking.aspx" \
-  -e FORM_PARAMS='{"txtPostcode":"SW1A 1AA"}' \
-  -e HEADLESS=true \
-  balloo-recycling-booker
+npm run discover
 ```
 
-Or use an env file:
+This opens a browser and walks through the form, logging field IDs and options.
+
+### Step Testing
+
+Test individual form steps:
 
 ```bash
-docker run --rm --env-file .env balloo-recycling-booker
+npm run test:step -- 1  # Test step 1 (Your details)
+npm run test:step -- 2  # Test step 2 (Your waste)
 ```
 
-The Docker image is self-contained — no need to install Chrome or system libraries on the host.
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/booking/start` | Start new booking session |
+| `POST` | `/api/booking/trash` | Submit waste selection |
+| `GET` | `/api/booking/slots` | Get time slots for date |
+| `POST` | `/api/booking/confirm` | Confirm booking |
+| `GET` | `/api/settings` | Get current settings |
+| `PUT` | `/api/settings` | Update settings |
+
+## License
+
+ISC

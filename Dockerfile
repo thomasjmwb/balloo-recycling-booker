@@ -1,58 +1,69 @@
-# syntax=docker/dockerfile:1
+# Multi-stage build for recycling booker PWA
 
-FROM node:22-slim
+# Stage 1: Build client
+FROM node:22-slim AS client-builder
+WORKDIR /app/client
+COPY client/package*.json ./
+RUN npm ci
+COPY client/ ./
+RUN npm run build
 
-# Install Chrome dependencies and Chrome itself
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    fonts-liberation \
+# Stage 2: Build server
+FROM node:22-slim AS server-builder
+WORKDIR /app/server
+COPY server/package*.json ./
+RUN npm ci
+COPY server/ ./
+RUN npm run build
+
+# Stage 3: Production runtime
+FROM node:22-slim AS runtime
+
+# Install Chrome dependencies
+RUN apt-get update && apt-get install -y \
+    libnss3 \
+    libxss1 \
     libasound2 \
     libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
+    libgtk-3-0 \
     libdrm2 \
     libgbm1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libx11-6 \
-    libxcb1 \
+    libx11-xcb1 \
     libxcomposite1 \
     libxdamage1 \
-    libxext6 \
     libxfixes3 \
-    libxkbcommon0 \
     libxrandr2 \
-    wget \
-    xdg-utils \
-  && rm -rf /var/lib/apt/lists/*
+    libpango-1.0-0 \
+    libcairo2 \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci
+# Copy server
+COPY server/package*.json ./server/
+WORKDIR /app/server
+RUN npm ci --omit=dev
 
-# Install Chrome for Puppeteer
+# Install Puppeteer's Chrome
 RUN npx puppeteer browsers install chrome
 
-# Copy source code
-COPY tsconfig.json ./
-COPY src ./src
+# Copy built server
+COPY --from=server-builder /app/server/dist ./dist
 
-# Build TypeScript
-RUN npm run build
+# Copy built client
+COPY --from=client-builder /app/client/dist ../client/dist
 
-# Run as non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
-    && chown -R appuser:appuser /app \
-    && chown -R appuser:appuser /home
-
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN mkdir -p /app/data && chown -R appuser:appuser /app
 USER appuser
 
-# Default command
-CMD ["node", "dist/main.js"]
+WORKDIR /app/server
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js"]

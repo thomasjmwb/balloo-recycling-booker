@@ -1,37 +1,38 @@
 {
   "name": "balloo-recycling-booker",
   "version": "1.0.0",
-  "description": "Headless browser automation for booking recycling appointments",
+  "description": "PWA for booking recycling centre appointments",
   "type": "module",
-  "main": "dist/main.js",
+  "private": true,
   "scripts": {
-    "postinstall": "puppeteer browsers install chrome",
-    "build": "tsc",
-    "start": "node dist/main.js",
-    "dev": "tsx src/main.ts",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "discover": "cd scripts && tsx discover.ts",
+    "test:step": "cd scripts && tsx test-steps.ts",
+    "lint": "cd server && npm run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\""
   },
   "keywords": [
     "recycling",
     "booking",
+    "pwa",
     "puppeteer",
     "automation"
   ],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "puppeteer": "^23.0.0"
-  },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "eslint": "^9.0.0",
-    "@eslint/js": "^9.0.0",
-    "typescript-eslint": "^8.0.0",
+    "concurrently": "^9.0.0",
+    "dotenv": "^16.4.5",
     "prettier": "^3.3.0",
+    "puppeteer": "^23.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
