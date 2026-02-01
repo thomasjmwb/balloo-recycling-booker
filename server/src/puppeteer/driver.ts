@@ -98,6 +98,29 @@ export class BookingDriver {
   }
 
   /**
+   * Re-reads formGuid from the page DOM (updated after each section submit).
+   */
+  async getFormGuidFromPage(): Promise<string> {
+    if (!this.page) throw new Error("Driver not started");
+    let guid = "";
+    try {
+      guid = (
+        await this.page.$eval(selectors.form.formGuid, (el) => (el as unknown as { value: string }).value)
+      ).trim();
+    } catch {
+      try {
+        guid = (
+          await this.page.$eval(selectors.form.formGuidFallback, (el) => (el as unknown as { value: string }).value)
+        ).trim();
+      } catch {
+        /* ignore */
+      }
+    }
+    if (guid) this.formGuid = guid;
+    return guid || (this.formGuid ?? "");
+  }
+
+  /**
    * Gets cookies from the browser session.
    */
   async getCookies(): Promise<Cookie[]> {

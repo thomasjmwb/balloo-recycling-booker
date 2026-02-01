@@ -1,5 +1,24 @@
 import { api } from "../api.js";
 
+function logTimezoneDebug(label: string): void {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const offset = -new Date().getTimezoneOffset();
+  const offsetStr =
+    (offset >= 0 ? "+" : "-") +
+    String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0") +
+    ":" +
+    String(Math.abs(offset) % 60).padStart(2, "0");
+  const info = {
+    label,
+    timeZone: tz,
+    timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+    timezoneOffsetString: "UTC" + offsetStr,
+    currentTime: new Date().toString(),
+    currentTimeISO: new Date().toISOString(),
+  };
+  console.log("[Balloo] Timezone debug:", info);
+}
+
 interface WasteOption {
   id: string;
   label: string;
@@ -179,8 +198,11 @@ async function onDateChange(e: Event): Promise<void> {
 
   showLoading(true);
   try {
+    logTimezoneDebug("before getSlots");
     const result = await api.getSlots(sessionId, dateValue);
     slots = result.slots;
+    logTimezoneDebug("after getSlots");
+    console.log("[Balloo] First 3 slots received:", slots.slice(0, 3));
 
     const slotSelect = document.getElementById("slot-select") as HTMLSelectElement;
     if (slotSelect) {

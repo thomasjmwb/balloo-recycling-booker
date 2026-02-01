@@ -1,7 +1,13 @@
+import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { BookingDriver } from "./driver.js";
 import { logScreenshot } from "./htmlLogger.js";
+import { fetchSlots } from "./slotsApi.js";
 import { selectors, wasteTypes } from "../config/selectors.js";
 import type { Settings } from "../config/settings.js";
+
+const __serverDir = dirname(fileURLToPath(import.meta.url));
 
 /** Helper to delay execution */
 function delay(ms: number): Promise<void> {
@@ -342,30 +348,157 @@ export async function getAvailableDates(
 }
 
 /**
- * Selects a date and gets available time slots.
+ * Captures the form's getavailabletimeslots request when it fires (from date select).
+ */
+function setupFormSlotsCapture(page: ReturnType<BookingDriver["getPage"]>): {
+  promise: Promise<{ request?: object; response?: object }>;
+  cleanup: () => void;
+} {
+  const captured: { request?: object; response?: object } = {};
+  let resolve: (v: typeof captured) => void;
+  const promise = new Promise<typeof captured>((r) => {
+    resolve = r;
+  });
+
+  const reqHandler = (req: { url: () => string; method: () => string; postData: () => string | undefined; headers: () => Record<string, string> }) => {
+    if (req.url().includes("getavailabletimeslots")) {
+      captured.request = {
+        url: req.url(),
+        method: req.method(),
+        postData: req.postData(),
+        headers: req.headers(),
+      };
+    }
+  };
+  const resHandler = async (res: { url: () => string; status: () => number; text: () => Promise<string> }) => {
+    if (res.url().includes("getavailabletimeslots")) {
+      try {
+        const text = await res.text();
+        captured.response = { status: res.status(), bodyPreview: text.slice(0, 500) };
+      } catch {
+        captured.response = { status: res.status(), bodyPreview: "(could not read)" };
+      }
+      resolve(captured);
+    }
+  };
+
+  page.on("request", reqHandler);
+  page.on("response", resHandler);
+
+  const cleanup = () => {
+    page.off("request", reqHandler);
+    page.off("response", resHandler);
+  };
+
+  return { promise, cleanup };
+}
+
+/**
+ * Selects a date and gets available time slots via direct API (curl-style).
  */
 export async function selectDateAndGetSlots(
   driver: BookingDriver,
   dateValue: string
 ): Promise<Array<{ value: string; label: string }>> {
   const page = driver.getPage();
-  console.log("[Step5] Selecting date:", dateValue);
+
+  const { promise: formCapturePromise, cleanup: formCaptureCleanup } = setupFormSlotsCapture(page);
+
+  console.log("[Step5] Selecting date:", JSON.stringify(dateValue));
   await driver.select(selectors.step5.dateSelect, dateValue);
+  const formCaptured = await Promise.race([
+    formCapturePromise,
+    new Promise<{ request?: object; response?: object }>((r) =>
+      setTimeout(() => r({}), 3000)
+    ),
+  ]);
+  formCaptureCleanup();
+  await delay(300);
   await logScreenshot(page, "step5-3-after-date-select");
 
-  // Wait for time slots to load
-  await page.waitForFunction(
-    (sel) => {
-      const select = document.querySelector(sel) as HTMLSelectElement | null;
-      return select && select.options.length > 1;
-    },
-    { timeout: 10000 },
-    selectors.step5.timeSelect
+  const formGuid = await driver.getFormGuidFromPage();
+  const cookies = await driver.getCookies();
+
+  const { slots, ourRequest } = await fetchSlots({ formGuid, dateValue, cookies });
+  if (slots.length === 0) {
+    throw new Error("No time slots returned from API");
+  }
+
+  const browserTimezone = await page.evaluate(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offset = -new Date().getTimezoneOffset();
+    const offsetHours = Math.floor(Math.abs(offset) / 60);
+    const offsetMins = Math.abs(offset) % 60;
+    const offsetStr = (offset >= 0 ? "+" : "-") + String(offsetHours).padStart(2, "0") + ":" + String(offsetMins).padStart(2, "0");
+    return {
+      timeZone: tz,
+      timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+      timezoneOffsetString: offsetStr,
+      currentTime: new Date().toString(),
+      currentTimeISO: new Date().toISOString(),
+    };
+  });
+
+  const logsDir = join(__serverDir, "../../../data/logs");
+  if (!existsSync(logsDir)) mkdirSync(logsDir, { recursive: true });
+  const debugPath = join(logsDir, "slots-debug.json");
+  writeFileSync(
+    debugPath,
+    JSON.stringify(
+      {
+        timestamp: new Date().toISOString(),
+        dateValue,
+        timezone: {
+          browser: browserTimezone,
+          server: {
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+            currentTime: new Date().toString(),
+            currentTimeISO: new Date().toISOString(),
+          },
+          TZ_env: process.env.TZ ?? "(not set)",
+        },
+        formRequest: formCaptured?.request,
+        formResponse: formCaptured?.response,
+        ourRequest,
+        ourFirst3Slots: slots.slice(0, 3),
+        paramComparison: {
+          formPostData: formCaptured?.request && "postData" in formCaptured.request ? (formCaptured.request as { postData?: string }).postData : undefined,
+          ourBody: ourRequest?.body,
+        },
+      },
+      null,
+      2
+    ),
+    "utf-8"
   );
+  console.log("[Slots] Debug comparison written to", debugPath);
 
   await logScreenshot(page, "step5-4-slots-loaded");
-  const options = await driver.getSelectOptions(selectors.step5.timeSelect);
-  return options.filter((o) => o.value && !o.value.startsWith("{"));
+  console.log("[Slots] Returned to UI:", slots.length, "slots");
+
+  // Inject slots into form's time select so confirm step can submit
+  const sel = selectors.step5.timeSelect;
+  const optsJson = JSON.stringify(slots);
+  await page.evaluate(
+    function (selector: string, json: string) {
+      const select = document.querySelector(selector) as HTMLSelectElement | null;
+      if (!select) return;
+      const opts = JSON.parse(json) as Array<{ value: string; label: string }>;
+      let html = '<option value="">{Please select a time}</option>';
+      for (let i = 0; i < opts.length; i++) {
+        const o = opts[i];
+        const v = o.value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+        const l = o.label.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        html += '<option value="' + v + '">' + l + "</option>";
+      }
+      select.innerHTML = html;
+    },
+    sel,
+    optsJson
+  );
+
+  return slots;
 }
 
 /**

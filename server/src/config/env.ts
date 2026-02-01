@@ -1,9 +1,28 @@
 import { config } from "dotenv";
+import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-config({ path: join(__dirname, "../../../.env") });
+const projectRoot = join(__dirname, "../../..");
+const envPaths = [
+  join(projectRoot, ".env"),
+  join(process.cwd(), ".env"),
+  join(__dirname, "../../.env"),
+];
+let loaded = false;
+for (const p of envPaths) {
+  if (existsSync(p)) {
+    config({ path: p });
+    loaded = true;
+    break;
+  }
+}
+if (!loaded) {
+  throw new Error(
+    "No .env file found. Create one from .env.example (e.g. cp .env.example .env) and configure required variables."
+  );
+}
 
 /**
  * Environment configuration for the server.

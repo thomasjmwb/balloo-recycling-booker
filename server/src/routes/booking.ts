@@ -115,6 +115,8 @@ bookingRouter.post("/trash", async (req: Request, res: Response) => {
 bookingRouter.get("/slots", async (req: Request, res: Response) => {
   const { sessionId, date } = req.query as { sessionId: string; date: string };
 
+  console.log("[Slots] Request params: sessionId=", sessionId?.slice(0, 8) + "...", "date=", JSON.stringify(date));
+
   const driver = sessions.get(sessionId);
   if (!driver) {
     return res.status(404).json({ error: "Session not found" });
@@ -153,8 +155,8 @@ bookingRouter.post("/confirm", async (req: Request, res: Response) => {
   try {
     await selectSlotAndSubmit(driver, slotValue);
 
-    // Take screenshot of confirmation
-    await driver.screenshot("data/confirmation.png");
+    // Take screenshot of confirmation (saved to data/logs/)
+    await logScreenshot(driver.getPage(), "confirmation");
 
     // Clean up
     await driver.close();

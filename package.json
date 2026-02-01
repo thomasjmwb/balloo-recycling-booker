@@ -14,6 +14,7 @@
     "build:client": "cd client && npm run build",
     "start": "cd server && npm start",
     "discover": "cd scripts && tsx discover.ts",
+    "debug:slots": "cd scripts && tsx debug-slots-capture.ts",
     "test:step": "cd scripts && tsx test-steps.ts",
     "lint": "cd server && npm run lint",
     "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
