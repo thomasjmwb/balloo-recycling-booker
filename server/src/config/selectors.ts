@@ -7,6 +7,7 @@ export const selectors = {
   // Form-wide
   form: {
     formGuid: "#form-guid",
+    formGuidFallback: 'input[name="FormGuid"]',
     requestVerificationToken: 'input[name="__RequestVerificationToken"]',
     currentSectionId: "#current-section-id",
     submitButton: "#submit-button",

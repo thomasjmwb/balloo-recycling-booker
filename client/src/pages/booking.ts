@@ -1,9 +1,8 @@
 import { api } from "../api.js";
 
-interface WasteType {
+interface WasteOption {
   id: string;
   label: string;
-  defaultChecked: boolean;
 }
 
 interface DateOption {
@@ -18,24 +17,33 @@ interface SlotOption {
 
 let sessionId: string | null = null;
 let formGuid: string | null = null;
-let wasteTypes: WasteType[] = [];
+let wasteOptions: WasteOption[] = [];
+let wasteDefaults: string[] = [];
 let dates: DateOption[] = [];
 let slots: SlotOption[] = [];
 
-export function renderBookingPage(container: HTMLElement): void {
+export async function renderBookingPage(container: HTMLElement): Promise<void> {
+  // Load settings for waste options and defaults
+  const { settings, options } = await api.getSettings();
+  wasteOptions = options.wasteTypes;
+  wasteDefaults = settings.wasteDefaults || [];
+
   container.innerHTML = `
     <div class="booking-page">
       <h1>Book Recycling Visit</h1>
       
       <div id="step-start" class="step">
         <p>Click Start to begin booking with your saved settings.</p>
-        <button id="btn-start" class="btn primary">Start Booking</button>
-      </div>
+        
+        <details class="waste-details">
+          <summary>
+            <span>Customize waste types (optional)</span>
+            <span id="waste-summary" class="waste-summary"></span>
+          </summary>
+          <div id="waste-list" class="checkbox-list"></div>
+        </details>
 
-      <div id="step-trash" class="step hidden">
-        <h2>Select Waste Types</h2>
-        <div id="waste-list" class="checkbox-list"></div>
-        <button id="btn-submit-trash" class="btn primary">Continue</button>
+        <button id="btn-start" class="btn primary">Start Booking</button>
       </div>
 
       <div id="step-date" class="step hidden">
@@ -67,12 +75,46 @@ export function renderBookingPage(container: HTMLElement): void {
     </div>
   `;
 
+  // Render waste checkboxes with defaults
+  const list = document.getElementById("waste-list");
+  if (list) {
+    list.innerHTML = wasteOptions
+      .map(
+        (w) => `
+        <label class="checkbox-item">
+          <input type="checkbox" value="${w.id}" data-label="${escapeHtml(w.label)}" ${wasteDefaults.includes(w.id) ? "checked" : ""}>
+          <span>${escapeHtml(w.label)}</span>
+        </label>
+      `
+      )
+      .join("");
+  }
+
+  updateWasteSummary();
+
   // Bind events
   document.getElementById("btn-start")?.addEventListener("click", startBooking);
-  document.getElementById("btn-submit-trash")?.addEventListener("click", submitTrash);
   document.getElementById("date-select")?.addEventListener("change", onDateChange);
+  document.getElementById("waste-list")?.addEventListener("change", updateWasteSummary);
   document.getElementById("btn-confirm")?.addEventListener("click", confirmBooking);
   document.getElementById("btn-reset")?.addEventListener("click", resetBooking);
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function updateWasteSummary(): void {
+  const checkboxes = document.querySelectorAll("#waste-list input:checked");
+  const labels = Array.from(checkboxes).map(
+    (cb) => (cb as HTMLInputElement).dataset.label || (cb as HTMLInputElement).value
+  );
+  const summary = document.getElementById("waste-summary");
+  if (summary) {
+    summary.textContent = labels.length > 0 ? ` — ${labels.join(", ")}` : "";
+  }
 }
 
 function showStep(stepId: string): void {
@@ -94,40 +136,6 @@ function showError(message: string): void {
 }
 
 async function startBooking(): Promise<void> {
-  showLoading(true);
-  try {
-    const result = await api.startBooking();
-    sessionId = result.sessionId;
-    formGuid = result.formGuid;
-    wasteTypes = result.wasteTypes;
-
-    // Render waste checkboxes
-    const list = document.getElementById("waste-list");
-    if (list) {
-      list.innerHTML = wasteTypes
-        .map(
-          (w) => `
-          <label class="checkbox-item">
-            <input type="checkbox" value="${w.id}" ${w.defaultChecked ? "checked" : ""}>
-            <span>${w.label}</span>
-          </label>
-        `
-        )
-        .join("");
-    }
-
-    showStep("step-trash");
-  } catch (err) {
-    showError("Failed to start booking. Please try again.");
-    console.error(err);
-  } finally {
-    showLoading(false);
-  }
-}
-
-async function submitTrash(): Promise<void> {
-  if (!sessionId) return;
-
   const checkboxes = document.querySelectorAll("#waste-list input:checked");
   const selectedIds = Array.from(checkboxes).map((cb) => (cb as HTMLInputElement).value);
 
@@ -138,7 +146,8 @@ async function submitTrash(): Promise<void> {
 
   showLoading(true);
   try {
-    const result = await api.submitTrash(sessionId, selectedIds);
+    const result = await api.startBooking(selectedIds);
+    sessionId = result.sessionId;
     formGuid = result.formGuid;
     dates = result.dates;
 
@@ -152,7 +161,7 @@ async function submitTrash(): Promise<void> {
 
     showStep("step-date");
   } catch (err) {
-    showError("Failed to submit waste selection.");
+    showError("Failed to start booking. Please try again.");
     console.error(err);
   } finally {
     showLoading(false);
@@ -217,7 +226,6 @@ async function confirmBooking(): Promise<void> {
 function resetBooking(): void {
   sessionId = null;
   formGuid = null;
-  wasteTypes = [];
   dates = [];
   slots = [];
   showStep("step-start");

@@ -33,16 +33,16 @@ function navigateTo(page: Page): void {
   updateNavState();
 }
 
-function renderPage(): void {
+async function renderPage(): Promise<void> {
   const content = document.getElementById("page-content");
   if (!content) return;
 
   switch (currentPage) {
     case "booking":
-      renderBookingPage(content);
+      await renderBookingPage(content);
       break;
     case "settings":
-      renderSettingsPage(content);
+      await renderSettingsPage(content);
       break;
   }
 }

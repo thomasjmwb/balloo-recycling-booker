@@ -1,9 +1,8 @@
 import { Router, Request, Response } from "express";
 import { BookingDriver } from "../puppeteer/driver.js";
 import { fillStep1, fillStep2, fillStep3, fillStep4, getAvailableDates, selectDateAndGetSlots, selectSlotAndSubmit } from "../puppeteer/steps.js";
+import { logHtmlSnapshot, logScreenshot } from "../puppeteer/htmlLogger.js";
 import { loadSettings } from "../config/settings.js";
-import { wasteTypes } from "../config/selectors.js";
-import { SLOTS_API_URL } from "../config/env.js";
 
 export const bookingRouter = Router();
 
@@ -12,37 +11,48 @@ const sessions = new Map<string, BookingDriver>();
 
 /**
  * POST /api/booking/start
- * Starts a new booking session, fills step 1, stops at step 2 (waste selection).
+ * Starts booking, fills steps 1-4 with provided wasteIds, returns available dates.
+ * Body: { wasteIds: string[] }
  */
-bookingRouter.post("/start", async (_req: Request, res: Response) => {
+bookingRouter.post("/start", async (req: Request, res: Response) => {
+  const { wasteIds } = req.body as { wasteIds?: string[] };
+  if (!wasteIds || !Array.isArray(wasteIds) || wasteIds.length === 0) {
+    return res.status(400).json({ error: "At least one waste type must be selected" });
+  }
+
   const sessionId = crypto.randomUUID();
   const driver = new BookingDriver();
 
   try {
-    // Start browser and navigate
     const { formGuid } = await driver.start();
 
-    // Fill step 1 with saved settings
     const settings = loadSettings();
     await fillStep1(driver, settings);
+    await fillStep2(driver, wasteIds);
+    await fillStep3(driver, settings);
+    await fillStep4(driver);
 
-    // Store session
+    const dates = await getAvailableDates(driver);
+
     sessions.set(sessionId, driver);
 
-    // Return waste options for user selection
     res.json({
       sessionId,
       formGuid,
-      step: "trash",
-      wasteTypes: wasteTypes.map((w) => ({
-        id: w.id,
-        label: w.label,
-        defaultChecked: settings.wasteDefaults.includes(w.id),
-      })),
+      dates,
     });
   } catch (error) {
-    await driver.close();
     console.error("Error starting booking:", error);
+    try {
+      const page = driver.getPage();
+      const logPath = await logHtmlSnapshot(page, "error-step1-start", String(error));
+      const screenshotPath = await logScreenshot(page, "error-step1-start");
+      console.error("HTML snapshot:", logPath, "Screenshot:", screenshotPath);
+    } catch (logErr) {
+      console.error("Could not capture debug logs:", logErr);
+    } finally {
+      await driver.close();
+    }
     res.status(500).json({ error: "Failed to start booking" });
   }
 });
@@ -82,6 +92,17 @@ bookingRouter.post("/trash", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error submitting waste:", error);
+    try {
+      const page = driver.getPage();
+      const logPath = await logHtmlSnapshot(page, "error-step2-trash", String(error));
+      const screenshotPath = await logScreenshot(page, "error-step2-trash");
+      console.error("HTML snapshot:", logPath, "Screenshot:", screenshotPath);
+    } catch (logErr) {
+      console.error("Could not capture debug logs:", logErr);
+    } finally {
+      await driver.close();
+      sessions.delete(sessionId);
+    }
     res.status(500).json({ error: "Failed to submit waste selection" });
   }
 });
@@ -104,6 +125,14 @@ bookingRouter.get("/slots", async (req: Request, res: Response) => {
     res.json({ slots });
   } catch (error) {
     console.error("Error getting slots:", error);
+    try {
+      const page = driver.getPage();
+      const logPath = await logHtmlSnapshot(page, "error-step5-slots", String(error));
+      const screenshotPath = await logScreenshot(page, "error-step5-slots");
+      console.error("HTML snapshot:", logPath, "Screenshot:", screenshotPath);
+    } catch (logErr) {
+      console.error("Could not capture debug logs:", logErr);
+    }
     res.status(500).json({ error: "Failed to get time slots" });
   }
 });
@@ -137,6 +166,17 @@ bookingRouter.post("/confirm", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error confirming booking:", error);
+    try {
+      const page = driver.getPage();
+      const logPath = await logHtmlSnapshot(page, "error-step5-confirm", String(error));
+      const screenshotPath = await logScreenshot(page, "error-step5-confirm");
+      console.error("HTML snapshot:", logPath, "Screenshot:", screenshotPath);
+    } catch (logErr) {
+      console.error("Could not capture debug logs:", logErr);
+    } finally {
+      await driver.close();
+      sessions.delete(sessionId);
+    }
     res.status(500).json({ error: "Failed to confirm booking" });
   }
 });

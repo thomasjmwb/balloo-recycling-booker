@@ -65,12 +65,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   // Booking
-  async startBooking(): Promise<{
+  async startBooking(wasteIds: string[]): Promise<{
     sessionId: string;
     formGuid: string;
-    wasteTypes: WasteType[];
+    dates: DateOption[];
   }> {
-    return request("/booking/start", { method: "POST" });
+    return request("/booking/start", {
+      method: "POST",
+      body: JSON.stringify({ wasteIds }),
+    });
   },
 
   async submitTrash(

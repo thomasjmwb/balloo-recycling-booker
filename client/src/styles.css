@@ -288,6 +288,32 @@ h3 {
   display: none;
 }
 
+/* Expandable waste selection */
+.waste-details {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.waste-details summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.25rem 0;
+}
+
+.waste-details .waste-summary {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.9em;
+}
+
+.waste-details .checkbox-list {
+  margin-top: 0.75rem;
+  max-height: 200px;
+}
+
 /* PWA install prompt spacing */
 @media (display-mode: standalone) {
   .nav {

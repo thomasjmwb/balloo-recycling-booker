@@ -53,6 +53,14 @@ npm run dev
 
 Open http://localhost:5173 in your browser.
 
+### See the browser / screenshots
+
+- **Watch the browser**: Set `HEADLESS=false` in `.env` to see the Chrome window as it fills the form.
+- **Screenshots on errors**: When a step fails, HTML and screenshots are saved to `data/logs/`:
+  - `error-form-guid.html` / `error-form-guid.png` — formGuid lookup failed
+  - `error-step2-trash.html` / `error-step2-trash.png` — waste submission failed
+- **Enable HTML logs**: Set `DEBUG_HTML_LOGS=true` in `.env` (already on by default).
+
 ### Scripts
 
 | Command | Description |

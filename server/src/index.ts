@@ -2,12 +2,25 @@ import express from "express";
 import cors from "cors";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { existsSync, readdirSync, unlinkSync } from "fs";
 import { PORT } from "./config/env.js";
 import { bookingRouter } from "./routes/booking.js";
 import { settingsRouter } from "./routes/settings.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// Delete existing logs on server start
+const logsDir = join(__dirname, "../../data/logs");
+if (existsSync(logsDir)) {
+  for (const file of readdirSync(logsDir)) {
+    try {
+      unlinkSync(join(logsDir, file));
+    } catch {
+      // Ignore errors
+    }
+  }
+}
 
 app.use(cors());
 app.use(express.json());
