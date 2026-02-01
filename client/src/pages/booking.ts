@@ -94,10 +94,13 @@ export async function renderBookingPage(container: HTMLElement): Promise<void> {
     </div>
   `;
 
-  // Render waste checkboxes with defaults
+  // Render waste checkboxes with defaults (checked items first)
   const list = document.getElementById("waste-list");
   if (list) {
-    list.innerHTML = wasteOptions
+    const sorted = [...wasteOptions].sort(
+      (a, b) => (wasteDefaults.includes(b.id) ? 1 : 0) - (wasteDefaults.includes(a.id) ? 1 : 0)
+    );
+    list.innerHTML = sorted
       .map(
         (w) => `
         <label class="checkbox-item">

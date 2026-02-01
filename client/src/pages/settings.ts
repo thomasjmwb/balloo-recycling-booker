@@ -104,12 +104,18 @@ function renderForm(): void {
     <section class="form-section">
       <h2>Default Waste Types</h2>
       <div class="checkbox-list">
-        ${options.wasteTypes.map((w) => `
+        ${[...options.wasteTypes]
+          .sort(
+            (a, b) =>
+              (settings?.wasteDefaults.includes(b.id) ? 1 : 0) - (settings?.wasteDefaults.includes(a.id) ? 1 : 0)
+          )
+          .map((w) => `
           <label class="checkbox-item">
             <input type="checkbox" name="wasteDefaults" value="${w.id}" ${settings?.wasteDefaults.includes(w.id) ? "checked" : ""}>
             <span>${w.label}</span>
           </label>
-        `).join("")}
+        `)
+          .join("")}
       </div>
     </section>
 
