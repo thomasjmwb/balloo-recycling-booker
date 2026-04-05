@@ -184,63 +184,53 @@ export async function fillStep1(driver: BookingDriver, settings: Settings): Prom
     await delay(500);
     await logScreenshot(page, "address-5c-after-scroll");
 
-    let addressToSelect: string;
-    if (settings.addressValue) {
-      addressToSelect = settings.addressValue;
-    } else {
-      const options = await driver.getSelectOptions(selectors.step1.addressList);
-      const firstReal = options.find((o) => o.value && o.value.includes("|"));
-      if (!firstReal) {
-        throw new Error("[Address lookup] No address options with valid format found to select.");
-      }
-      addressToSelect = firstReal.value;
+    // 5d. Find the correct option value to select
+    const options = await driver.getSelectOptions(selectors.step1.addressList);
+    const realOptions = options.filter((o) => o.value && o.value.includes("|"));
+    if (realOptions.length === 0) {
+      throw new Error("[Address lookup] No address options with valid pipe-delimited format found.");
     }
 
-    // 5d. Click and use keyboard to open the native select dropdown
-    await driver.click(selectors.step1.addressList);
-    await delay(200);
-    await page.keyboard.press("Space");
-    await delay(300);
-    await logScreenshot(page, "address-5d-after-click-space");
+    let addressToSelect: string;
+    if (settings.addressValue && settings.addressValue.includes("|")) {
+      addressToSelect = settings.addressValue;
+    } else if (settings.addressValue) {
+      const needle = settings.addressValue.toUpperCase();
+      const match = realOptions.find((o) => o.label.toUpperCase().includes(needle) || o.value.toUpperCase().includes(needle));
+      addressToSelect = match ? match.value : realOptions[0].value;
+    } else {
+      addressToSelect = realOptions[0].value;
+    }
 
-    // 5e. ArrowDown x2 to skip placeholder and select first real address, then Enter
-    await page.keyboard.press("ArrowDown");
-    await delay(100);
-    await page.keyboard.press("ArrowDown");
-    await delay(100);
-    await page.keyboard.press("Enter");
-    await delay(300);
-    await logScreenshot(page, "address-5e-after-select");
-    console.log("[Step1] Selected address value:", addressToSelect);
+    // 5e. Programmatically select the address (reliable in both headed and headless mode)
+    await driver.select(selectors.step1.addressList, addressToSelect);
+    await delay(500);
+    await logScreenshot(page, "address-5d-after-select");
+    console.log("[Step1] Selected address option:", addressToSelect);
 
-    // 6. Verify hidden #FF17 was populated; if not, set it manually (format: "id|address" -> id goes in #FF17)
+    // 6. Verify hidden #FF17 was populated by the form's change handler; if not, set it manually
     await delay(300);
     let ff17Value = await page.$eval(selectors.step1.addressHidden, (el) => (el as HTMLInputElement).value);
-    if (!ff17Value) {
-      const selectedValue = await page.$eval(
-        selectors.step1.addressList,
-        (el) => (el as HTMLSelectElement).value
+    if (!ff17Value && addressToSelect.includes("|")) {
+      const addressId = addressToSelect.split("|")[0];
+      await page.$eval(
+        selectors.step1.addressHidden,
+        (el, id) => {
+          const input = el as HTMLInputElement;
+          input.value = id;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        },
+        addressId
       );
-      if (selectedValue && selectedValue.includes("|")) {
-        const addressId = selectedValue.split("|")[0];
-        await page.$eval(
-          selectors.step1.addressHidden,
-          (el, id) => {
-            const input = el as HTMLInputElement;
-            input.value = id;
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-          },
-          addressId
-        );
-        ff17Value = addressId;
-        console.log("[Step1] Manually set #FF17 to:", ff17Value);
-      } else {
-        throw new Error(
-          `[Address lookup] Hidden #FF17 was not populated and could not be set. ` +
-            `Selected value: "${selectedValue}".`
-        );
-      }
+      ff17Value = addressId;
+      console.log("[Step1] Manually set #FF17 to:", ff17Value);
+    }
+    if (!ff17Value) {
+      throw new Error(
+        `[Address lookup] Hidden #FF17 was not populated and could not be set. ` +
+          `Selected value: "${addressToSelect}".`
+      );
     }
     console.log("[Step1] Address confirmed, #FF17 value:", ff17Value);
     await logScreenshot(page, "address-5-selected");

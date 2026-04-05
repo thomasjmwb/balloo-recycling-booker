@@ -7,9 +7,12 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx src/index.ts",
     "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix"
+    "lint:fix": "eslint src --ext .ts --fix",
+    "test:health": "vitest run src/__tests__/health-check.integration.test.ts --reporter=verbose",
+    "test:settings": "vitest run src/__tests__/settings.integration.test.ts --reporter=verbose",
+    "test": "vitest run src/__tests__/ --reporter=verbose"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -22,6 +25,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^1.6.1"
   }
 }

@@ -6,9 +6,9 @@
   "private": true,
   "scripts": {
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
+    "dev": "tsx scripts/dev.ts",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
     "build": "npm run build:server && npm run build:client",
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
@@ -17,8 +17,10 @@
     "debug:slots": "cd scripts && tsx debug-slots-capture.ts",
     "test:step": "cd scripts && tsx test-steps.ts",
     "lint": "cd server && npm run lint",
+    "test:health": "cd server && npm run test:health",
     "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\"",
+    "test:preflight": "vitest run scripts/__tests__/ --reporter=verbose"
   },
   "keywords": [
     "recycling",
@@ -35,6 +37,7 @@
     "prettier": "^3.3.0",
     "puppeteer": "^23.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^1.6.1"
   }
 }
