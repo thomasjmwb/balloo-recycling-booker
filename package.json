@@ -20,7 +20,8 @@
     "test:health": "cd server && npm run test:health",
     "format": "prettier --write \"**/*.{ts,tsx,json,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,css}\"",
-    "test:preflight": "vitest run scripts/__tests__/ --reporter=verbose"
+    "test:preflight": "vitest run scripts/__tests__/ --reporter=verbose",
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
   },
   "keywords": [
     "recycling",

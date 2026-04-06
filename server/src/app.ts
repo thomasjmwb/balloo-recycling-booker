@@ -1,8 +1,8 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { existsSync, readdirSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
 import { bookingRouter } from "./routes/booking.js";
 import { settingsRouter } from "./routes/settings.js";
 
@@ -22,8 +22,41 @@ if (existsSync(logsDir)) {
   }
 }
 
+const LOG_REQUESTS = (process.env.LOG_REQUESTS ?? "true").toLowerCase() === "true";
+const requestLogPath = join(__dirname, "../../data/logs/requests.log");
+
+function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const start = Date.now();
+  const { method, originalUrl } = req;
+
+  res.on("finish", () => {
+    const entry = {
+      ts: new Date().toISOString(),
+      method,
+      url: originalUrl,
+      status: res.statusCode,
+      ms: Date.now() - start,
+      size: parseInt(res.getHeader("content-length") as string) || 0,
+    };
+    const line = JSON.stringify(entry);
+    console.log(line);
+
+    if (LOG_REQUESTS) {
+      try {
+        mkdirSync(join(__dirname, "../../data/logs"), { recursive: true });
+        appendFileSync(requestLogPath, line + "\n");
+      } catch {
+        // Don't crash on log write failure
+      }
+    }
+  });
+
+  next();
+}
+
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 // API routes
 app.use("/api/booking", bookingRouter);

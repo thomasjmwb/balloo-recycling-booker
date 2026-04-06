@@ -59,6 +59,14 @@ Manages `sessions: Map<string, BookingDriver>` (in-memory, not shared across pro
 - **Flow:** Calls `saveSettings(updates)` which merges into existing `data/settings.json`, then reloads and returns.
 - **Response:** `{ success: true, settings: Settings }`
 
+## Request Logger Middleware
+
+Defined in `../app.ts`, applied globally before route handlers. Logs every HTTP request as a single-line JSON object to stdout and optionally to `data/logs/requests.log` (controlled by `LOG_REQUESTS` env var, default `true`).
+
+Log fields: `ts` (ISO timestamp), `method`, `url`, `status`, `ms` (response time), `size` (Content-Length).
+
+In production, stdout goes to `C:\services\recycling-booker\data\service-stdout.log` via NSSM. The dedicated `requests.log` file is also available at `C:\services\recycling-booker\data\logs\requests.log`.
+
 ## Dependencies
 
 - `booking.ts` imports from `../puppeteer/driver.js`, `../puppeteer/steps.js`, `../puppeteer/htmlLogger.js`, `../config/settings.js`.
