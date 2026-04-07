@@ -226,6 +226,7 @@ async function onDateChange(e: Event): Promise<void> {
 async function confirmBooking(): Promise<void> {
   if (!sessionId) return;
 
+  const dateSelect = document.getElementById("date-select") as HTMLSelectElement;
   const slotSelect = document.getElementById("slot-select") as HTMLSelectElement;
   const slotValue = slotSelect?.value;
 
@@ -234,9 +235,12 @@ async function confirmBooking(): Promise<void> {
     return;
   }
 
+  const dateLabel = dateSelect?.selectedOptions[0]?.textContent || "";
+  const slotLabel = slotSelect?.selectedOptions[0]?.textContent || "";
+
   showLoading(true);
   try {
-    await api.confirmBooking(sessionId, slotValue);
+    await api.confirmBooking(sessionId, slotValue, dateLabel, slotLabel);
     sessionId = null;
     formGuid = null;
     showStep("step-done");

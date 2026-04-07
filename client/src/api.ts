@@ -98,10 +98,15 @@ export const api = {
     return request(`/booking/slots?sessionId=${sessionId}&date=${encodeURIComponent(date)}`);
   },
 
-  async confirmBooking(sessionId: string, slotValue: string): Promise<{ success: boolean }> {
+  async confirmBooking(
+    sessionId: string,
+    slotValue: string,
+    dateLabel: string,
+    slotLabel: string
+  ): Promise<{ success: boolean }> {
     return request("/booking/confirm", {
       method: "POST",
-      body: JSON.stringify({ sessionId, slotValue }),
+      body: JSON.stringify({ sessionId, slotValue, dateLabel, slotLabel }),
     });
   },
 
@@ -122,4 +127,16 @@ export const api = {
       body: JSON.stringify(updates),
     });
   },
+
+  // Booking history
+  async getBookingHistory(): Promise<{ bookings: BookingRecord[] }> {
+    return request("/booking/history");
+  },
 };
+
+export interface BookingRecord {
+  id: string;
+  dateLabel: string;
+  slotLabel: string;
+  confirmedAt: string;
+}

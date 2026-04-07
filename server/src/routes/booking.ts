@@ -3,6 +3,7 @@ import { BookingDriver } from "../puppeteer/driver.js";
 import { fillStep1, fillStep2, fillStep3, fillStep4, getAvailableDates, selectDateAndGetSlots, selectSlotAndSubmit } from "../puppeteer/steps.js";
 import { logHtmlSnapshot, logScreenshot } from "../puppeteer/htmlLogger.js";
 import { loadSettings } from "../config/settings.js";
+import { addBooking, loadBookings } from "../config/bookings.js";
 
 export const bookingRouter = Router();
 
@@ -145,7 +146,12 @@ bookingRouter.get("/slots", async (req: Request, res: Response) => {
  * Body: { sessionId, slotValue }
  */
 bookingRouter.post("/confirm", async (req: Request, res: Response) => {
-  const { sessionId, slotValue } = req.body as { sessionId: string; slotValue: string };
+  const { sessionId, slotValue, dateLabel, slotLabel } = req.body as {
+    sessionId: string;
+    slotValue: string;
+    dateLabel?: string;
+    slotLabel?: string;
+  };
 
   const driver = sessions.get(sessionId);
   if (!driver) {
@@ -157,6 +163,13 @@ bookingRouter.post("/confirm", async (req: Request, res: Response) => {
 
     // Take screenshot of confirmation (saved to data/logs/)
     await logScreenshot(driver.getPage(), "confirmation");
+
+    addBooking({
+      id: crypto.randomUUID(),
+      dateLabel: dateLabel || "Unknown date",
+      slotLabel: slotLabel || "Unknown slot",
+      confirmedAt: new Date().toISOString(),
+    });
 
     // Clean up
     await driver.close();
@@ -197,4 +210,13 @@ bookingRouter.post("/cancel", async (req: Request, res: Response) => {
   }
 
   res.json({ success: true });
+});
+
+/**
+ * GET /api/booking/history
+ * Returns completed booking records, most recent first.
+ */
+bookingRouter.get("/history", (_req: Request, res: Response) => {
+  const bookings = loadBookings();
+  res.json({ bookings: bookings.reverse() });
 });

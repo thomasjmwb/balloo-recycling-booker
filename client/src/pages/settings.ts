@@ -1,4 +1,4 @@
-import { api, type Settings, type SettingsOptions } from "../api.js";
+import { api, type Settings, type SettingsOptions, type BookingRecord } from "../api.js";
 
 let settings: Settings | null = null;
 let options: SettingsOptions | null = null;
@@ -10,6 +10,7 @@ export async function renderSettingsPage(container: HTMLElement): Promise<void> 
       <div id="settings-loading" class="loading">Loading...</div>
       <form id="settings-form" class="form hidden"></form>
       <div id="settings-message" class="message hidden"></div>
+      <div id="booking-history"></div>
     </div>
   `;
 
@@ -20,6 +21,13 @@ export async function renderSettingsPage(container: HTMLElement): Promise<void> 
     renderForm();
   } catch (err) {
     container.innerHTML = `<p class="error">Failed to load settings.</p>`;
+  }
+
+  try {
+    const { bookings } = await api.getBookingHistory();
+    renderBookingHistory(bookings);
+  } catch {
+    // History is non-critical; silently ignore failures
   }
 }
 
@@ -152,6 +160,49 @@ async function handleSubmit(e: Event): Promise<void> {
   } catch (err) {
     showMessage("Failed to save settings.", "error");
   }
+}
+
+function renderBookingHistory(bookings: BookingRecord[]): void {
+  const container = document.getElementById("booking-history");
+  if (!container) return;
+
+  if (bookings.length === 0) {
+    container.innerHTML = `
+      <section class="form-section">
+        <h2>Booking History</h2>
+        <p class="text-muted">No bookings yet.</p>
+      </section>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <section class="form-section">
+      <h2>Booking History</h2>
+      <ul class="booking-history-list">
+        ${bookings
+          .map((b) => {
+            const date = new Date(b.confirmedAt);
+            const submitted = date.toLocaleDateString(undefined, {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            return `
+            <li class="booking-history-item">
+              <div class="booking-history-detail">
+                <span class="booking-history-date">${b.dateLabel}</span>
+                <span class="booking-history-slot">${b.slotLabel}</span>
+              </div>
+              <span class="booking-history-submitted">Submitted ${submitted}</span>
+            </li>`;
+          })
+          .join("")}
+      </ul>
+    </section>
+  `;
 }
 
 function showMessage(text: string, type: "success" | "error"): void {
