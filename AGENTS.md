@@ -28,8 +28,14 @@ PWA (Vite, vanilla TS) --fetch /api/*--> Express (Node) --Puppeteer--> Council w
 ## Dev / Prod
 
 - **Dev:** `npm run dev` starts Vite on :5173 (proxies `/api` to :3000) and Express on :3000 concurrently.
-- **Prod:** `npm run build` compiles both; `npm start` runs Express which serves `client/dist` as static files with SPA fallback.
+- **Prod:** `npm run build` compiles both; `npm start` runs Express which serves `client/dist` as static files with SPA fallback. On the production machine the app runs as the NSSM service `recycling-booker` on port **3100** (the `PORT` in `.env` is overridden by NSSM `AppEnvironmentExtra`), with Caddy reverse-proxying `https://recycling.local.home` to it. See [docs/deployment.md](docs/deployment.md).
 - **Docker:** Multi-stage build (Node 22 slim + Chrome deps). `docker build -t recycling-booker . && docker run -p 3000:3000 --env-file .env recycling-booker`
+
+## Production / Deployment
+
+For anything related to the running production service on this machine — service topology, NSSM and Caddy configuration, access URLs, redeployment, log locations, and debugging recipes — read [docs/deployment.md](docs/deployment.md) **before making changes or diagnosing issues**.
+
+For DNS issues with `recycling.local.home` (typically after a router reboot), see [docs/router-dns-setup.md](docs/router-dns-setup.md).
 
 ## Key Commands
 
@@ -71,58 +77,14 @@ All HTTP requests are logged as single-line JSON to stdout and (by default) to `
 | `LOG_REQUESTS` | `true` | Write request logs to `data/logs/requests.log` in addition to stdout |
 | `DEBUG_HTML_LOGS` | `true` | Enable Puppeteer HTML snapshot logging (read directly by `htmlLogger.ts`) |
 
-### Where to Find Logs
-
-**Local development (working directory):**
+### Where to Find Logs (development)
 
 - Stdout in the terminal running `npm run dev`
 - `data/logs/requests.log` — HTTP request log (append-only, reset on server restart since `data/logs/` is cleared on startup)
 - `data/logs/*.html` / `*.png` — Puppeteer HTML snapshots and screenshots on errors
 - `data/logs/slots-debug.json` — slot API debug data
 
-**Production (`C:\services\recycling-booker`):**
-
-The NSSM service (`recycling-booker`) redirects stdout/stderr to files. Check these paths on the production machine:
-
-- `C:\services\recycling-booker\data\service-stdout.log` — all `console.log` output including JSON request logs (rotated at 1 MB by NSSM)
-- `C:\services\recycling-booker\data\service-stderr.log` — all `console.error` output (rotated at 1 MB)
-- `C:\services\recycling-booker\data\logs\requests.log` — dedicated request log file
-- `C:\services\recycling-booker\data\logs\` — HTML snapshots, screenshots, `slots-debug.json`
-
-### Parsing Logs (PowerShell)
-
-Tail the production log live:
-
-```powershell
-Get-Content -Wait C:\services\recycling-booker\data\service-stdout.log
-```
-
-Filter for errors (status >= 400):
-
-```powershell
-Get-Content C:\services\recycling-booker\data\service-stdout.log |
-  Where-Object { $_ -match '^\{' } |
-  ConvertFrom-Json |
-  Where-Object { $_.status -ge 400 }
-```
-
-Find slow requests (> 5 seconds):
-
-```powershell
-Get-Content C:\services\recycling-booker\data\logs\requests.log |
-  ConvertFrom-Json |
-  Where-Object { $_.ms -gt 5000 } |
-  Format-Table ts, method, url, ms
-```
-
-Filter by endpoint:
-
-```powershell
-Get-Content C:\services\recycling-booker\data\logs\requests.log |
-  ConvertFrom-Json |
-  Where-Object { $_.url -like '*/booking/*' } |
-  Format-Table ts, method, url, status, ms
-```
+For production log locations and PowerShell parsing recipes, see [docs/deployment.md](docs/deployment.md#debugging).
 
 ### Other Debug Artifacts
 

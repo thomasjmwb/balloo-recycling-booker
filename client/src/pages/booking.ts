@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { logError } from "../errorLog.js";
 
 function logTimezoneDebug(label: string): void {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -42,84 +43,96 @@ let dates: DateOption[] = [];
 let slots: SlotOption[] = [];
 
 export async function renderBookingPage(container: HTMLElement): Promise<void> {
-  // Load settings for waste options and defaults
-  const { settings, options } = await api.getSettings();
-  wasteOptions = options.wasteTypes;
-  wasteDefaults = settings.wasteDefaults || [];
+  try {
+    // Load settings for waste options and defaults
+    const { settings, options } = await api.getSettings();
+    wasteOptions = options.wasteTypes;
+    wasteDefaults = settings.wasteDefaults || [];
 
-  container.innerHTML = `
-    <div class="booking-page">
-      <h1>Book Recycling Visit</h1>
-      
-      <div id="step-start" class="step">
-        <p>Click Start to begin booking with your saved settings.</p>
+    container.innerHTML = `
+      <div class="booking-page">
+        <h1>Book Recycling Visit</h1>
         
-        <details class="waste-details">
-          <summary>
-            <span>Customize waste types (optional)</span>
-            <span id="waste-summary" class="waste-summary"></span>
-          </summary>
-          <div id="waste-list" class="checkbox-list"></div>
-        </details>
+        <div id="step-start" class="step">
+          <p>Click Start to begin booking with your saved settings.</p>
+          
+          <details class="waste-details">
+            <summary>
+              <span>Customize waste types (optional)</span>
+              <span id="waste-summary" class="waste-summary"></span>
+            </summary>
+            <div id="waste-list" class="checkbox-list"></div>
+          </details>
 
-        <button id="btn-start" class="btn primary">Start Booking</button>
-      </div>
+          <button id="btn-start" class="btn primary">Start Booking</button>
+        </div>
 
-      <div id="step-date" class="step hidden">
-        <h2>Select Date</h2>
-        <select id="date-select" class="select">
-          <option value="">Choose a date...</option>
-        </select>
-        <div id="slots-container" class="hidden">
-          <h3>Available Times</h3>
-          <select id="slot-select" class="select">
-            <option value="">Choose a time...</option>
+        <div id="step-date" class="step hidden">
+          <h2>Select Date</h2>
+          <select id="date-select" class="select">
+            <option value="">Choose a date...</option>
           </select>
-          <button id="btn-confirm" class="btn primary">Confirm Booking</button>
+          <div id="slots-container" class="hidden">
+            <h3>Available Times</h3>
+            <select id="slot-select" class="select">
+              <option value="">Choose a time...</option>
+            </select>
+            <button id="btn-confirm" class="btn primary">Confirm Booking</button>
+          </div>
+        </div>
+
+        <div id="step-done" class="step hidden">
+          <h2>Booking Confirmed!</h2>
+          <p>Your recycling centre visit has been booked.</p>
+          <button id="btn-reset" class="btn">Book Another</button>
+        </div>
+
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <p>Processing...</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+      </div>
+    `;
+
+    // Render waste checkboxes with defaults (checked items first)
+    const list = document.getElementById("waste-list");
+    if (list) {
+      const sorted = [...wasteOptions].sort(
+        (a, b) => (wasteDefaults.includes(b.id) ? 1 : 0) - (wasteDefaults.includes(a.id) ? 1 : 0)
+      );
+      list.innerHTML = sorted
+        .map(
+          (w) => `
+          <label class="checkbox-item">
+            <input type="checkbox" value="${w.id}" data-label="${escapeHtml(w.label)}" ${wasteDefaults.includes(w.id) ? "checked" : ""}>
+            <span>${escapeHtml(w.label)}</span>
+          </label>
+        `
+        )
+        .join("");
+    }
+
+    updateWasteSummary();
+
+    // Bind events
+    document.getElementById("btn-start")?.addEventListener("click", startBooking);
+    document.getElementById("date-select")?.addEventListener("change", onDateChange);
+    document.getElementById("waste-list")?.addEventListener("change", updateWasteSummary);
+    document.getElementById("btn-confirm")?.addEventListener("click", confirmBooking);
+    document.getElementById("btn-reset")?.addEventListener("click", resetBooking);
+  } catch (err) {
+    logError("Booking Init", "Page could not load", err);
+    container.innerHTML = `
+      <div class="booking-page">
+        <div class="error" style="display:block;">
+          <strong>Initialization Failed</strong>
+          <p>The booking page could not load. Please check the browser console for details, and verify your internet connection and certificate validity.</p>
         </div>
       </div>
-
-      <div id="step-done" class="step hidden">
-        <h2>Booking Confirmed!</h2>
-        <p>Your recycling centre visit has been booked.</p>
-        <button id="btn-reset" class="btn">Book Another</button>
-      </div>
-
-      <div id="loading" class="loading hidden">
-        <div class="spinner"></div>
-        <p>Processing...</p>
-      </div>
-
-      <div id="error" class="error hidden"></div>
-    </div>
-  `;
-
-  // Render waste checkboxes with defaults (checked items first)
-  const list = document.getElementById("waste-list");
-  if (list) {
-    const sorted = [...wasteOptions].sort(
-      (a, b) => (wasteDefaults.includes(b.id) ? 1 : 0) - (wasteDefaults.includes(a.id) ? 1 : 0)
-    );
-    list.innerHTML = sorted
-      .map(
-        (w) => `
-        <label class="checkbox-item">
-          <input type="checkbox" value="${w.id}" data-label="${escapeHtml(w.label)}" ${wasteDefaults.includes(w.id) ? "checked" : ""}>
-          <span>${escapeHtml(w.label)}</span>
-        </label>
-      `
-      )
-      .join("");
+    `;
   }
-
-  updateWasteSummary();
-
-  // Bind events
-  document.getElementById("btn-start")?.addEventListener("click", startBooking);
-  document.getElementById("date-select")?.addEventListener("change", onDateChange);
-  document.getElementById("waste-list")?.addEventListener("change", updateWasteSummary);
-  document.getElementById("btn-confirm")?.addEventListener("click", confirmBooking);
-  document.getElementById("btn-reset")?.addEventListener("click", resetBooking);
 }
 
 function escapeHtml(text: string): string {
@@ -183,8 +196,8 @@ async function startBooking(): Promise<void> {
 
     showStep("step-date");
   } catch (err) {
-    showError("Failed to start booking. Please try again.");
-    console.error(err);
+    logError("Booking Start", "Failed to start booking", err);
+    showError("Connection error: Failed to start booking. Please check your internet connection and ensure certificates are valid.");
   } finally {
     showLoading(false);
   }
@@ -216,8 +229,8 @@ async function onDateChange(e: Event): Promise<void> {
 
     document.getElementById("slots-container")?.classList.remove("hidden");
   } catch (err) {
-    showError("Failed to load time slots.");
-    console.error(err);
+    logError("Booking Slots", "Failed to load time slots", err);
+    showError("Connection error: Failed to load time slots. Please check your internet connection and ensure certificates are valid.");
   } finally {
     showLoading(false);
   }
@@ -245,8 +258,8 @@ async function confirmBooking(): Promise<void> {
     formGuid = null;
     showStep("step-done");
   } catch (err) {
-    showError("Failed to confirm booking.");
-    console.error(err);
+    logError("Booking Confirm", "Failed to confirm booking", err);
+    showError("Connection error: Failed to confirm booking. Please check your internet connection and try again.");
   } finally {
     showLoading(false);
   }

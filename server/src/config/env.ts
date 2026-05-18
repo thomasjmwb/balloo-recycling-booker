@@ -89,3 +89,12 @@ export const SITE = optionalEnv("SITE", "Balloo");
 
 // Form defaults - Step 2 (Waste types) - comma-separated field IDs
 export const WASTE_DEFAULTS = optionalEnv("WASTE_DEFAULTS", "FF34,FF48,FF33,FF50").split(",").filter(Boolean);
+
+// Router DNS auto-fix (see server/src/routerDns.ts and docs/router-dns-setup.md)
+export const ROUTER_DNS_AUTOFIX = optionalBool("ROUTER_DNS_AUTOFIX", false);
+export const ROUTER_HOST = optionalEnv("ROUTER_HOST", "192.168.50.1");
+export const ROUTER_SSH_PORT = parseInt(optionalEnv("ROUTER_SSH_PORT", "1025"), 10);
+export const ROUTER_SSH_USER = optionalEnv("ROUTER_SSH_USER", "admin");
+export const ROUTER_SSH_KEY = optionalEnv("ROUTER_SSH_KEY", "");
+export const LOCAL_HOSTNAME = optionalEnv("LOCAL_HOSTNAME", "recycling.local.home");
+export const LOCAL_HOST_IP = optionalEnv("LOCAL_HOST_IP", "192.168.50.94");

@@ -12,11 +12,15 @@ dist/
 # Data
 data/
 
-# IDE
+# IDE / agent tooling
 .idea/
 .vscode/
+.hobbes/
 *.swp
 *.swo
+
+# AI-generated plan docs
+client/src/pages/plan.md
 
 # OS
 .DS_Store

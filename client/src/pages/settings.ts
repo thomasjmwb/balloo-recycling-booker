@@ -1,4 +1,7 @@
 import { api, type Settings, type SettingsOptions, type BookingRecord } from "../api.js";
+import { logError, getErrors, clearErrors } from "../errorLog.js";
+
+const APP_VERSION: string = __APP_VERSION__;
 
 let settings: Settings | null = null;
 let options: SettingsOptions | null = null;
@@ -11,8 +14,12 @@ export async function renderSettingsPage(container: HTMLElement): Promise<void> 
       <form id="settings-form" class="form hidden"></form>
       <div id="settings-message" class="message hidden"></div>
       <div id="booking-history"></div>
+      <div id="error-log"></div>
+      <p class="text-muted" style="text-align:center; margin-top:2rem;">v${APP_VERSION}</p>
     </div>
   `;
+
+  renderErrorLog();
 
   try {
     const result = await api.getSettings();
@@ -20,14 +27,33 @@ export async function renderSettingsPage(container: HTMLElement): Promise<void> 
     options = result.options;
     renderForm();
   } catch (err) {
-    container.innerHTML = `<p class="error">Failed to load settings.</p>`;
+    logError("Settings Load", "Failed to load settings", err);
+    const detail = err instanceof Error ? err.message : "Unknown error";
+    container.innerHTML = `
+      <div class="settings-page">
+        <h1>Settings</h1>
+        <p class="error">Failed to load settings: ${detail}. See error log below for details.</p>
+        <div id="error-log"></div>
+        <p class="text-muted" style="text-align:center; margin-top:2rem;">v${APP_VERSION}</p>
+      </div>`;
+    renderErrorLog();
+    return;
   }
 
   try {
     const { bookings } = await api.getBookingHistory();
     renderBookingHistory(bookings);
-  } catch {
-    // History is non-critical; silently ignore failures
+  } catch (err) {
+    logError("Settings History", "Failed to load booking history", err);
+    const historyContainer = document.getElementById("booking-history");
+    if (historyContainer) {
+      historyContainer.innerHTML = `
+        <section class="form-section">
+          <h2>Booking History</h2>
+          <p class="text-muted" style="color: orange;">Could not load booking history right now. Check your connection.</p>
+        </section>`;
+    }
+    renderErrorLog();
   }
 }
 
@@ -158,7 +184,8 @@ async function handleSubmit(e: Event): Promise<void> {
     settings = result.settings;
     showMessage("Settings saved!", "success");
   } catch (err) {
-    showMessage("Failed to save settings.", "error");
+    logError("Settings Save", "Failed to save settings", err);
+    showMessage("Failed to save settings. Please check your connection and try again.", "error");
   }
 }
 
@@ -213,4 +240,57 @@ function showMessage(text: string, type: "success" | "error"): void {
     el.classList.remove("hidden");
     setTimeout(() => el.classList.add("hidden"), 3000);
   }
+}
+
+function renderErrorLog(): void {
+  const container = document.getElementById("error-log");
+  if (!container) return;
+
+  const errors = getErrors();
+
+  if (errors.length === 0) {
+    container.innerHTML = `
+      <section class="form-section">
+        <h2>Error Log</h2>
+        <p class="text-muted">No errors recorded.</p>
+      </section>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <section class="form-section">
+      <h2>Error Log</h2>
+      <p class="text-muted">${errors.length} error(s) — copy these when reporting issues.</p>
+      <ul class="error-log-list">
+        ${errors
+          .slice()
+          .reverse()
+          .map((e) => {
+            const time = new Date(e.timestamp).toLocaleString();
+            const detail = escapeHtml(e.detail || "No additional detail");
+            return `
+            <li class="error-log-item">
+              <div class="error-log-header">
+                <strong>${escapeHtml(e.source)}</strong>
+                <span class="text-muted">${time}</span>
+              </div>
+              <div>${escapeHtml(e.message)}</div>
+              <pre class="error-log-detail">${detail}</pre>
+            </li>`;
+          })
+          .join("")}
+      </ul>
+      <button id="btn-clear-errors" class="btn">Clear Error Log</button>
+    </section>`;
+
+  document.getElementById("btn-clear-errors")?.addEventListener("click", () => {
+    clearErrors();
+    renderErrorLog();
+  });
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }

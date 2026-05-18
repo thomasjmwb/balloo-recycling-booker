@@ -359,6 +359,43 @@ h3 {
   font-size: 0.9rem;
 }
 
+/* Error log */
+.error-log-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.error-log-item {
+  padding: 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+}
+
+.error-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+.error-log-detail {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fff5f5;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #991b1b;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
 /* PWA install prompt spacing */
 @media (display-mode: standalone) {
   .nav {
