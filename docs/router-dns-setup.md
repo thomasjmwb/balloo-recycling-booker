@@ -1,11 +1,17 @@
 # Router DNS Setup for recycling.local.home
 
-> **The recycling-booker service applies these steps automatically on startup**
-> via [server/src/routerDns.ts](../server/src/routerDns.ts) (when
+> **The recycling-booker service applies these steps automatically** — on
+> startup and then every 5 minutes (`ROUTER_DNS_CHECK_INTERVAL_MS`) — via
+> [server/src/routerDns.ts](../server/src/routerDns.ts) (when
 > `ROUTER_DNS_AUTOFIX=true`). See the
 > [Router DNS auto-fix section in deployment.md](deployment.md#router-dns-auto-fix).
 > The manual procedure below is the fallback for when auto-fix is disabled,
 > the service is down, or SSH key auth is broken.
+>
+> **Known SSH failure mode:** the service runs as `LocalSystem`, so the key at
+> `ROUTER_SSH_KEY` must have its ACL restricted to `SYSTEM`/`Administrators`
+> only, or OpenSSH rejects it with `UNPROTECTED PRIVATE KEY FILE` /
+> `Permission denied (publickey)`. See deployment.md for the `icacls` fix.
 
 ## Overview
 
@@ -47,7 +53,34 @@ Stock AsusWRT firmware regenerates `/etc/dnsmasq.conf` from nvram on every
 `service restart_dnsmasq` call, wiping any manual additions. The manual
 kill/restart approach avoids this.
 
-## Current persistence attempts (not yet working)
+## Chosen durable fix: PC-side periodic watchdog (June 2026)
+
+Router-side persistence on stock firmware proved unreliable (see attempts
+below), so the durable fix lives on the PC instead: the recycling-booker
+service re-checks router DNS **every 5 minutes** and SSHes in to repair it
+when broken (`startRouterDnsWatchdog` in
+[server/src/routerDns.ts](../server/src/routerDns.ts)).
+
+Why the previous startup-only auto-fix failed for a week in June 2026 —
+two independent bugs, both needed fixing:
+
+1. **Wrong trigger.** The check only ran at service startup, but a router
+   reboot doesn't restart the service, so the wipe went unrepaired until the
+   next service restart.
+2. **Unusable SSH key.** Running as `LocalSystem`, OpenSSH rejected the
+   user-owned key (`UNPROTECTED PRIVATE KEY FILE` → `Permission denied`).
+   The service now has its own copy with a SYSTEM-only ACL **and SYSTEM as
+   owner** — both are required. See the SSH key section in
+   [deployment.md](deployment.md#ssh-key-why-the-service-has-its-own-copy).
+
+Verified end-to-end by deleting the dnsmasq line and watching the service
+log `fix applied successfully` within one interval.
+
+Residual gap: if the PC is off/asleep when the router reboots, local.home
+DNS stays broken until the PC is back (phones fall back to public DNS for
+everything else, so only `*.local.home` is affected).
+
+## Router-side persistence attempts (all failed on stock firmware)
 
 - `/jffs/configs/dnsmasq.conf.add` — not supported by stock firmware (Merlin only)
 - `nvram set dnsmasq_custom=...` — not supported by stock firmware
@@ -55,7 +88,7 @@ kill/restart approach avoids this.
 - JFFS is enabled (`nvram get jffs2_on` = 1) and scripts enabled
   (`nvram get jffs2_scripts` = 1)
 
-## Things to try for persistence
+## Other untested ideas (superseded by the watchdog)
 
 1. **`/jffs/scripts/services-start`** — runs after all services start on boot.
    Script would sleep briefly, append the server line, then restart dnsmasq

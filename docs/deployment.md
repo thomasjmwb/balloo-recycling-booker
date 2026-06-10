@@ -34,15 +34,17 @@ Both have `StartType: Automatic`, so they come up on boot.
 | This computer | `https://recycling.local.home` |
 | Phone (same Wi-Fi or via WireGuard) | `https://recycling.local.home` |
 
-There is no plain-HTTP frontend; port 80 just returns a banner pointing at the HTTPS URL. Caddy uses an internal CA (`tls internal`), so the first time you visit on a new device you need to accept / install Caddy's root certificate.
+There is no plain-HTTP frontend; port 80 just returns a banner pointing at the HTTPS URL. Caddy uses an internal CA (`tls internal`), so each new device must install Caddy's root certificate once (valid until 2036). For the CA topology, device install steps, and how to distinguish real cert problems from DNS problems, see [tls-certificates.md](tls-certificates.md).
 
 DNS for `*.local.home` is resolved by the router (ASUS GT-BE98) forwarding to CoreDNS on this PC. If `recycling.local.home` stops resolving — usually after a router reboot — the service re-applies the fix automatically on its next startup (see [Router DNS auto-fix](#router-dns-auto-fix) below). For the manual procedure, see [router-dns-setup.md](router-dns-setup.md).
 
 ## Router DNS auto-fix
 
-On startup, the Node service checks whether the router resolves `recycling.local.home` to the expected IP. If the lookup fails or returns the wrong address, it SSHes into the router and idempotently re-applies the `server=/local.home/...` line in `/etc/dnsmasq.conf`, then restarts dnsmasq. The check is non-fatal: if SSH fails, it logs and continues.
+The Node service checks whether the router resolves `recycling.local.home` to the expected IP — once at startup and then every `ROUTER_DNS_CHECK_INTERVAL_MS` (default 5 minutes). If the lookup fails or returns the wrong address, it SSHes into the router and idempotently re-applies the `server=/local.home/...` line in `/etc/dnsmasq.conf`, then restarts dnsmasq. The check is non-fatal: if SSH fails, it logs and continues.
 
-Implemented in [server/src/routerDns.ts](../server/src/routerDns.ts), called once from [server/src/index.ts](../server/src/index.ts) right after `app.listen`.
+The periodic re-check matters because a router reboot wipes the dnsmasq line while the service keeps running; a startup-only check would leave DNS broken until the next service restart (this happened in June 2026 — phones were broken for a week while the desktop kept working via its `hosts` entry, see gotchas below).
+
+Implemented in [server/src/routerDns.ts](../server/src/routerDns.ts) (`startRouterDnsWatchdog`), called from [server/src/index.ts](../server/src/index.ts) right after `app.listen`.
 
 Environment variables (all in production `.env`):
 
@@ -52,21 +54,39 @@ Environment variables (all in production `.env`):
 | `ROUTER_HOST` | `192.168.50.1` | Router IP, used both as DNS server for the check and SSH target |
 | `ROUTER_SSH_PORT` | `1025` | Router's SSH port |
 | `ROUTER_SSH_USER` | `admin` | SSH user |
-| `ROUTER_SSH_KEY` | `C:\Users\thoma\.ssh\id_ed25519` | Absolute path to the private key |
+| `ROUTER_SSH_KEY` | `C:\services\recycling-booker\.ssh\id_ed25519` | Absolute path to the private key |
 | `LOCAL_HOSTNAME` | `recycling.local.home` | Hostname to verify |
 | `LOCAL_HOST_IP` | `192.168.50.94` | Expected resolved address |
+| `ROUTER_DNS_CHECK_INTERVAL_MS` | `300000` (default) | Re-check interval; `0` = startup check only |
 
-### SSH key trade-off
+### SSH key: why the service has its own copy
 
-The current setup reuses the user's key at `C:\Users\thoma\.ssh\id_ed25519`. The recycling-booker service runs as `LocalSystem`, which can read any file on disk, so this works. The corresponding public key is registered with the router via the web UI (Administration → System → Authorized Keys), which persists in nvram across router reboots.
+The key at `C:\services\recycling-booker\.ssh\id_ed25519` is a copy of the user key `C:\Users\thoma\.ssh\id_ed25519` (same public key, already registered with the router via the web UI: Administration → System → Authorized Keys, persisted in nvram across reboots).
 
-The downside: if the `thoma` Windows profile is ever removed or its `.ssh` folder ACL is tightened, auto-fix breaks. To switch to a dedicated service-owned key later, generate a new keypair under `C:\services\recycling-booker\.ssh\`, register the new pubkey in the router web UI, and point `ROUTER_SSH_KEY` at it.
+The service **cannot** use the user's key directly. It runs as `LocalSystem`, and Windows OpenSSH refuses any private key whose ACL grants access to a principal other than the current user — it fails with `WARNING: UNPROTECTED PRIVATE KEY FILE! ... bad permissions` and then `Permission denied (publickey)`. (`LocalSystem` being able to *read* the file is not enough; the permission check is about who *else* can read it.) This silently broke the auto-fix for a week in June 2026.
+
+The service copy therefore needs **two** changes, both required (learned the hard way — the ACL alone still fails with the same `bad permissions` error because OpenSSH also checks the file *owner*):
+
+```powershell
+# 1. Restrict the ACL to SYSTEM and Administrators (admin shell)
+icacls C:\services\recycling-booker\.ssh\id_ed25519 /inheritance:r /grant "SYSTEM:F" /grant "Administrators:F"
+
+# 2. Change the owner from the user to SYSTEM (admin shell)
+$acl = Get-Acl C:\services\recycling-booker\.ssh\id_ed25519
+$acl.SetOwner([Security.Principal.NTAccount]'NT AUTHORITY\SYSTEM')
+Set-Acl C:\services\recycling-booker\.ssh\id_ed25519 $acl
+```
+
+After this, the `thoma` account can no longer read the file (expected — `Get-Acl` from a non-admin shell returns "unauthorized operation"). Verify the result end-to-end, not just by inspection: delete the dnsmasq line on the router and confirm the service logs `fix applied successfully` within one check interval (this drill was run successfully on 2026-06-10).
+
+If the key is ever rotated, re-copy it and re-apply **both** steps, or generate a dedicated keypair and register its pubkey in the router web UI.
 
 ### Log lines
 
 Look for the `[router-dns]` prefix in `service-stdout.log`:
 
-- `[router-dns] OK: recycling.local.home -> 192.168.50.94` — already correct, no action taken.
+- `[router-dns] periodic check every 300s` — watchdog started (logged once at startup).
+- `[router-dns] OK: recycling.local.home -> 192.168.50.94` — resolution correct. Logged on the first check and on recovery only, not every interval.
 - `[router-dns] resolved ... expected 192.168.50.94; applying fix` — wrong IP, fixing.
 - `[router-dns] initial lookup of ... failed (...); applying fix` — NXDOMAIN or timeout, fixing.
 - `[router-dns] fix applied successfully: ...` — recovery worked.
@@ -226,6 +246,8 @@ Then confirm Caddy is fronting it:
 ## Known issues / gotchas
 
 - **Chrome not found on first boot after a Puppeteer upgrade.** Puppeteer pins a specific Chrome version. After updating `puppeteer` in `package.json`, run `npx puppeteer browsers install chrome` from `C:\services\recycling-booker\server` (so it lands in the configured `PUPPETEER_CACHE_DIR`) before restarting the service. Symptom in stderr: `Could not find Chrome (ver. X). ...`.
-- **Phone can't reach `recycling.local.home`.** Almost always router DNS — see [router-dns-setup.md](router-dns-setup.md). Quick test: `nslookup recycling.local.home 192.168.50.1` from the PC.
+- **Phone can't reach `recycling.local.home` (including "certificate error" symptoms).** Almost always router DNS — see [router-dns-setup.md](router-dns-setup.md). Quick test: `nslookup recycling.local.home 192.168.50.1` from the PC. Note that a DNS failure can surface on phones as a *certificate* error (e.g. an upstream resolver hijacking NXDOMAIN to a server with a mismatched cert), so don't assume the TLS layer is at fault.
+- **Phones broken but this PC works.** Not evidence that DNS is fine: this PC has `127.0.0.1 recycling.local.home` in `C:\Windows\System32\drivers\etc\hosts`, so it never consults router DNS. Always test with `nslookup recycling.local.home 192.168.50.1` explicitly.
+- **Auto-fix logs `Permission denied (publickey)` / `UNPROTECTED PRIVATE KEY FILE`.** The key at `ROUTER_SSH_KEY` has too-open ACLs **or the wrong owner** for OpenSSH running as `LocalSystem`. Re-apply both the `icacls` lockdown and the `SetOwner` step shown in the SSH key section above — the ACL alone is not sufficient.
 - **NSSM env edits don't take effect.** `nssm set ... AppEnvironmentExtra ...` requires a service restart (`Restart-Service recycling-booker`) before new env vars are visible to the Node process.
 - **`.env` `PORT=3000` is ignored in production.** That's intentional; the NSSM `AppEnvironmentExtra` overrides it to 3100 to match the Caddy upstream. Don't "fix" the `.env`.

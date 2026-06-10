@@ -92,6 +92,11 @@ export const WASTE_DEFAULTS = optionalEnv("WASTE_DEFAULTS", "FF34,FF48,FF33,FF50
 
 // Router DNS auto-fix (see server/src/routerDns.ts and docs/router-dns-setup.md)
 export const ROUTER_DNS_AUTOFIX = optionalBool("ROUTER_DNS_AUTOFIX", false);
+// How often to re-check router DNS after startup (0 = startup check only).
+export const ROUTER_DNS_CHECK_INTERVAL_MS = parseInt(
+  optionalEnv("ROUTER_DNS_CHECK_INTERVAL_MS", "300000"),
+  10
+);
 export const ROUTER_HOST = optionalEnv("ROUTER_HOST", "192.168.50.1");
 export const ROUTER_SSH_PORT = parseInt(optionalEnv("ROUTER_SSH_PORT", "1025"), 10);
 export const ROUTER_SSH_USER = optionalEnv("ROUTER_SSH_USER", "admin");

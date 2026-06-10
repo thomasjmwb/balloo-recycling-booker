@@ -35,7 +35,9 @@ PWA (Vite, vanilla TS) --fetch /api/*--> Express (Node) --Puppeteer--> Council w
 
 For anything related to the running production service on this machine — service topology, NSSM and Caddy configuration, access URLs, redeployment, log locations, and debugging recipes — read [docs/deployment.md](docs/deployment.md) **before making changes or diagnosing issues**.
 
-For DNS issues with `recycling.local.home` (typically after a router reboot), see [docs/router-dns-setup.md](docs/router-dns-setup.md).
+For DNS issues with `recycling.local.home` (typically after a router reboot), see [docs/router-dns-setup.md](docs/router-dns-setup.md). The service self-heals router DNS every 5 minutes via [server/src/routerDns.ts](server/src/routerDns.ts).
+
+For HTTPS/certificate issues — including phone "certificate errors", which are usually DNS problems in disguise — see [docs/tls-certificates.md](docs/tls-certificates.md) before touching anything TLS-related.
 
 ## Key Commands
 
